@@ -1,0 +1,23 @@
+{
+  "name": "commerce-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/storefront"
+  ],
+  "overrides": {
+    "effect": "^3.22.5"
+  },
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace @commerce/api",
+    "dev:web": "npm run dev --workspace @commerce/storefront",
+    "build": "npm run build --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace @commerce/api",
+    "db:migrate": "npm run db:migrate --workspace @commerce/api",
+    "db:seed": "npm run db:seed --workspace @commerce/api"
+  }
+}
