@@ -155,13 +155,6 @@ class ApiClient {
       return await _loadCurrentUser();
     } on ApiException catch (error) {
       if (error.statusCode != 401) rethrow;
-    }
-
-    try {
-      await _refreshSession();
-      return await _loadCurrentUser();
-    } on ApiException catch (error) {
-      if (error.statusCode != 401) rethrow;
       await _clearSession();
       return null;
     }

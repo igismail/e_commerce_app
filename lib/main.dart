@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+
 import 'api/api_client.dart';
 
 const ink = Color(0xFF1E3029);
@@ -2622,6 +2625,7 @@ class _SignInDialogState extends State<SignInDialog> {
                   if (secret.isEmpty) return 'Enter your password';
                   if (!register) return null;
                   if (secret.length < 12 ||
+                      utf8.encode(secret).length > 72 ||
                       !RegExp(r'[a-z]').hasMatch(secret) ||
                       !RegExp(r'[A-Z]').hasMatch(secret) ||
                       !RegExp(r'\d').hasMatch(secret) ||

@@ -8,46 +8,49 @@ import 'package:http/testing.dart';
 void main() {
   const apiUrl = 'http://localhost:3001/api/v1';
 
-  test('login stores the session and requests the authenticated profile', () async {
-    final session = MemorySessionStore();
-    final client = ApiClient(
-      baseUrl: apiUrl,
-      sessionStore: session,
-      httpClient: MockClient((request) async {
-        expect(request.url.path, startsWith('/api/v1/auth/'));
-        if (request.url.path.endsWith('/auth/login')) {
-          expect(jsonDecode(request.body), {
-            'email': 'shopper@example.com',
-            'password': 'ExamplePassword123!',
-          });
-          return http.Response(
-            jsonEncode({
-              'accessToken': 'access-token',
-              'csrfToken': 'csrf-token',
-            }),
-            200,
-            headers: {
-              'set-cookie':
-                  'refresh_token=refresh-token; Path=/api/v1/auth; HttpOnly, csrf_token=csrf-token; Path=/api/v1/auth',
-            },
-          );
-        }
+  test(
+    'login stores the session and requests the authenticated profile',
+    () async {
+      final session = MemorySessionStore();
+      final client = ApiClient(
+        baseUrl: apiUrl,
+        sessionStore: session,
+        httpClient: MockClient((request) async {
+          expect(request.url.path, startsWith('/api/v1/auth/'));
+          if (request.url.path.endsWith('/auth/login')) {
+            expect(jsonDecode(request.body), {
+              'email': 'shopper@example.com',
+              'password': 'ExamplePassword123!',
+            });
+            return http.Response(
+              jsonEncode({
+                'accessToken': 'access-token',
+                'csrfToken': 'csrf-token',
+              }),
+              200,
+              headers: {
+                'set-cookie':
+                    'refresh_token=refresh-token; Path=/api/v1/auth; HttpOnly, csrf_token=csrf-token; Path=/api/v1/auth',
+              },
+            );
+          }
 
-        expect(request.headers['authorization'], 'Bearer access-token');
-        return http.Response(jsonEncode(profile), 200);
-      }),
-    );
+          expect(request.headers['authorization'], 'Bearer access-token');
+          return http.Response(jsonEncode(profile), 200);
+        }),
+      );
 
-    final user = await client.login(
-      email: 'shopper@example.com',
-      password: 'ExamplePassword123!',
-    );
+      final user = await client.login(
+        email: 'shopper@example.com',
+        password: 'ExamplePassword123!',
+      );
 
-    expect(user.email, 'shopper@example.com');
-    expect(session.values[ApiClient.accessTokenKey], 'access-token');
-    expect(session.values[ApiClient.refreshCookieKey], 'refresh-token');
-    expect(session.values[ApiClient.csrfTokenKey], 'csrf-token');
-  });
+      expect(user.email, 'shopper@example.com');
+      expect(session.values[ApiClient.accessTokenKey], 'access-token');
+      expect(session.values[ApiClient.refreshCookieKey], 'refresh-token');
+      expect(session.values[ApiClient.csrfTokenKey], 'csrf-token');
+    },
+  );
 
   test('expired access token is refreshed before loading the profile', () async {
     final session = MemorySessionStore()
@@ -121,6 +124,38 @@ void main() {
       ),
     );
   });
+
+  test(
+    'registration sends the API account fields and returns its message',
+    () async {
+      final client = ApiClient(
+        baseUrl: apiUrl,
+        sessionStore: MemorySessionStore(),
+        httpClient: MockClient((request) async {
+          expect(request.url.path, '/api/v1/auth/register');
+          expect(jsonDecode(request.body), {
+            'email': 'new@example.com',
+            'password': 'ExamplePassword123!',
+            'firstName': 'New',
+            'lastName': 'Shopper',
+          });
+          return http.Response(
+            '{"message":"Check your email to verify your account."}',
+            201,
+          );
+        }),
+      );
+
+      final message = await client.register(
+        email: ' new@example.com ',
+        password: 'ExamplePassword123!',
+        firstName: ' New ',
+        lastName: ' Shopper ',
+      );
+
+      expect(message, 'Check your email to verify your account.');
+    },
+  );
 }
 
 const profile = {
