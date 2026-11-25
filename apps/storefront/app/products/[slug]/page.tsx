@@ -3,7 +3,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AddToCart } from '@/components/add-to-cart';
 import { ProductGallery } from '@/components/product-gallery';
-import { ApiError, formatMoney, serverApi, type Product } from '@/lib/api';
+import {
+  ApiError,
+  formatMoney,
+  productImageUrl,
+  serverApi,
+  type Product,
+} from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +49,9 @@ export async function generateMetadata({
     openGraph: {
       title: product.name,
       description: product.description?.slice(0, 160),
-      images: product.images[0]?.url ? [product.images[0].url] : [],
+      images: product.images[0]?.url
+        ? [productImageUrl(product.images[0].url)]
+        : [],
     },
   };
 }
@@ -90,7 +98,11 @@ export default async function ProductPage({
           <p className={product.inStock ? 'stock-status' : 'stock-status out'}>
             {product.inStock ? 'In stock and ready to ship' : 'Currently out of stock'}
           </p>
-          <AddToCart productName={product.name} variants={product.variants} />
+          <AddToCart
+            productName={product.name}
+            productSlug={product.slug}
+            variants={product.variants}
+          />
         </div>
       </section>
 

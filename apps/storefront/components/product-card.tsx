@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { formatMoney, type Product } from '@/lib/api';
+import { formatMoney, productImageUrl, type Product } from '@/lib/api';
 
 export function ProductCard({ product }: { product: Product }) {
   const image = product.images[0];
@@ -17,7 +17,7 @@ export function ProductCard({ product }: { product: Product }) {
             height={1000}
             referrerPolicy="no-referrer"
             sizes="(max-width: 650px) 50vw, (max-width: 900px) 50vw, 25vw"
-            src={image.url}
+            src={productImageUrl(image.url)}
             unoptimized
             width={1000}
           />

@@ -75,6 +75,26 @@ describe('CatalogController', () => {
     );
   });
 
+  it('serves backend-hosted demo artwork for product categories', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/demo-images/apparel.svg')
+      .expect(200)
+      .expect('Content-Type', /image\/svg\+xml/);
+
+    const image = response.body.toString();
+    expect(image).toContain('Apparel product image');
+    expect(image).toContain('<path');
+  });
+
+  it('returns 404 for unsupported demo image categories', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/demo-images/not-a-category.svg')
+      .expect(404);
+    await request(app.getHttpServer())
+      .get('/api/v1/demo-images/toString.svg')
+      .expect(404);
+  });
+
   it('rejects invalid pagination, filters, and product slugs', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/products?page=0')

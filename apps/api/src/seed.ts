@@ -87,17 +87,6 @@ const products = [
   ['hardcover-field-notebook', 'Hardcover Field Notebook Set', 'books-stationery', 'Paper & Pine', 2200],
 ] as const;
 
-const imageByCategory: Record<string, string> = {
-  apparel: 'photo-1521572163474-6864f9cf17ab',
-  footwear: 'photo-1542291026-7eec264c27ff',
-  accessories: 'photo-1523275335684-37898b6baf30',
-  'home-living': 'photo-1616486338812-3dadae4b4ace',
-  electronics: 'photo-1505740420928-5e560c06d30e',
-  'beauty-care': 'photo-1596462502278-27bfdc403348',
-  outdoors: 'photo-1500530855697-b586d89ba3ee',
-  'books-stationery': 'photo-1544947950-fa07a98d237f',
-};
-
 function requiredPassword(name: string) {
   const password = requiredEnvironment(name);
   if (password.length < 12) {
@@ -198,16 +187,17 @@ async function main() {
       create: { variantId: variant.id, quantity: 18 + (index % 17) },
       update: {},
     });
+    const imageUrl = `/api/v1/demo-images/${categorySlug}.svg`;
     await prisma.productImage.upsert({
       where: { productId_sortOrder: { productId: product.id, sortOrder: 0 } },
       create: {
         productId: product.id,
-        url: `https://images.unsplash.com/${imageByCategory[categorySlug]}?auto=format&fit=crop&w=1000&q=85`,
+        url: imageUrl,
         altText: name,
         sortOrder: 0,
       },
       update: {
-        url: `https://images.unsplash.com/${imageByCategory[categorySlug]}?auto=format&fit=crop&w=1000&q=85`,
+        url: imageUrl,
         altText: name,
       },
     });

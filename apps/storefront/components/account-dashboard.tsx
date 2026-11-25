@@ -40,6 +40,15 @@ export function AccountDashboard() {
         </div>
         <AddressBook />
       </section>
+      <section aria-labelledby="wishlist-heading" className="account-section">
+        <div className="section-heading">
+          <h2 id="wishlist-heading">Wishlist</h2>
+        </div>
+        <p>Keep track of items you want to come back to.</p>
+        <Link className="button button-outline" href="/account/wishlist">
+          View wishlist
+        </Link>
+      </section>
     </>
   );
 }

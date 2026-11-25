@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "generate:api-types": "openapi-ts -i ../api/openapi.json -o lib/generated"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.9",
@@ -19,6 +20,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "0.97.3",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.7",

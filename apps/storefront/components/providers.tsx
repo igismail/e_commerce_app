@@ -15,7 +15,16 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ApiError, browserApi, type Cart } from '@/lib/api';
+import {
+  addWishlistItem as addWishlistItemRequest,
+  ApiError,
+  browserApi,
+  deleteWishlistItem as deleteWishlistItemRequest,
+  listWishlist as listWishlistRequest,
+  type Cart,
+  type WishlistQuery,
+} from '@/lib/api';
+import type { WishlistResponseDto } from '@/lib/generated/types.gen';
 
 type AuthUser = {
   id: string;
@@ -42,6 +51,9 @@ type AuthContextValue = {
   register: (input: RegisterInput) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   authorizedApi: <T>(path: string, options?: RequestInit) => Promise<T>;
+  listWishlist: (query?: WishlistQuery) => Promise<WishlistResponseDto>;
+  addWishlistItem: (variantId: string) => Promise<WishlistResponseDto>;
+  deleteWishlistItem: (itemId: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -146,27 +158,63 @@ function AuthStateProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient, session]);
 
-  const authorizedApi = useCallback(
-    async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
+  const authorizedRequest = useCallback(
+    async <T,>(request: (tokens: SessionTokens) => Promise<T>): Promise<T> => {
       if (!session) throw new Error('Sign in to continue.');
-      const withToken = (accessToken: string) => ({
-        ...options,
-        headers: {
-          ...options.headers,
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
       try {
-        return await browserApi<T>(path, withToken(session.accessToken));
+        return await request(session);
       } catch (error) {
         if (!(error instanceof ApiError) || error.status !== 401) throw error;
         const tokens = await refreshTokens(session.csrfToken);
         const next = { ...tokens, user: session.user };
         setSession(next);
-        return browserApi<T>(path, withToken(tokens.accessToken));
+        return request(tokens);
       }
     },
     [refreshTokens, session],
+  );
+
+  const authorizedApi = useCallback(
+    <T,>(path: string, options: RequestInit = {}) =>
+      authorizedRequest((tokens) =>
+        browserApi<T>(path, {
+          ...options,
+          headers: {
+            ...options.headers,
+            Authorization: `Bearer ${tokens.accessToken}`,
+          },
+        }),
+      ),
+    [authorizedRequest],
+  );
+  const listWishlist = useCallback(
+    (query: WishlistQuery = {}) =>
+      authorizedRequest((tokens) =>
+        listWishlistRequest(tokens.accessToken, tokens.csrfToken, query),
+      ),
+    [authorizedRequest],
+  );
+  const addWishlistItem = useCallback(
+    (variantId: string) =>
+      authorizedRequest((tokens) =>
+        addWishlistItemRequest(
+          tokens.accessToken,
+          tokens.csrfToken,
+          variantId,
+        ),
+      ),
+    [authorizedRequest],
+  );
+  const deleteWishlistItem = useCallback(
+    (itemId: string) =>
+      authorizedRequest((tokens) =>
+        deleteWishlistItemRequest(
+          tokens.accessToken,
+          tokens.csrfToken,
+          itemId,
+        ),
+      ),
+    [authorizedRequest],
   );
 
   return (
@@ -179,6 +227,9 @@ function AuthStateProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         authorizedApi,
+        listWishlist,
+        addWishlistItem,
+        deleteWishlistItem,
       }}
     >
       {children}

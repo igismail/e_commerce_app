@@ -10,12 +10,16 @@
     "apps/storefront"
   ],
   "overrides": {
-    "effect": "^3.22.5"
+    "effect": "^3.22.5",
+    "@hey-api/json-schema-ref-parser": {
+      "js-yaml": "4.3.2"
+    }
   },
   "scripts": {
     "dev:api": "npm run start:dev --workspace @commerce/api",
     "dev:web": "npm run dev --workspace @commerce/storefront",
     "build": "npm run build --workspaces --if-present",
+    "api:types": "npm run build --workspace @commerce/api && node apps/api/scripts/generate-openapi.cjs && npm run generate:api-types --workspace @commerce/storefront",
     "db:generate": "npm run db:generate --workspace @commerce/api",
     "db:migrate": "npm run db:migrate --workspace @commerce/api",
     "db:seed": "npm run db:seed --workspace @commerce/api"

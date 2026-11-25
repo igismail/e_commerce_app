@@ -1,15 +1,19 @@
 'use client';
 
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useState } from 'react';
-import { useCart } from './providers';
+import { useAuth, useCart } from './providers';
 import { type ProductVariant } from '@/lib/api';
 
 export function AddToCart({
   variants,
   productName,
+  productSlug,
 }: {
   variants: ProductVariant[];
   productName: string;
+  productSlug: string;
 }) {
   const firstAvailable = variants.find((variant) => variant.inStock);
   const [variantId, setVariantId] = useState(
@@ -17,9 +21,27 @@ export function AddToCart({
   );
   const [quantity, setQuantity] = useState(1);
   const [pending, setPending] = useState(false);
+  const [wishlistPending, setWishlistPending] = useState(false);
   const [message, setMessage] = useState('');
+  const [wishlistMessage, setWishlistMessage] = useState('');
   const { addItem } = useCart();
+  const {
+    session,
+    ready,
+    listWishlist,
+    addWishlistItem,
+    deleteWishlistItem,
+  } = useAuth();
+  const queryClient = useQueryClient();
+  const wishlist = useQuery({
+    queryKey: ['wishlist', session?.user.id],
+    queryFn: () => listWishlist({ limit: 100 }),
+    enabled: Boolean(session),
+  });
   const selected = variants.find((variant) => variant.id === variantId);
+  const savedItem = wishlist.data?.data.find(
+    (item) => item.variantId === selected?.id,
+  );
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,6 +57,30 @@ export function AddToCart({
       );
     } finally {
       setPending(false);
+    }
+  }
+
+  async function toggleWishlist() {
+    if (!selected || wishlistPending) return;
+    setWishlistPending(true);
+    setWishlistMessage('');
+    try {
+      if (savedItem) {
+        await deleteWishlistItem(savedItem.id);
+        setWishlistMessage('Removed from your wishlist.');
+      } else {
+        await addWishlistItem(selected.id);
+        setWishlistMessage('Saved to your wishlist.');
+      }
+      await queryClient.invalidateQueries({
+        queryKey: ['wishlist', session?.user.id],
+      });
+    } catch (error) {
+      setWishlistMessage(
+        error instanceof Error ? error.message : 'Could not update wishlist.',
+      );
+    } finally {
+      setWishlistPending(false);
     }
   }
 
@@ -69,6 +115,35 @@ export function AddToCart({
       >
         {pending ? 'Adding…' : selected?.inStock ? 'Add to bag' : 'Out of stock'}
       </button>
+      {session ? (
+        <button
+          className="button button-outline"
+          disabled={!selected || wishlistPending || wishlist.isLoading}
+          onClick={() => void toggleWishlist()}
+          type="button"
+        >
+          {wishlistPending
+            ? 'Updating wishlist…'
+            : savedItem
+              ? 'Remove from wishlist'
+              : 'Save to wishlist'}
+        </button>
+      ) : ready ? (
+        <Link
+          className="button button-outline"
+          href={`/login?next=${encodeURIComponent(`/products/${productSlug}`)}`}
+        >
+          Sign in to save
+        </Link>
+      ) : null}
+      {wishlist.error ? (
+        <p className="form-message" role="status">
+          Wishlist could not be loaded.
+        </p>
+      ) : null}
+      <p aria-live="polite" className="form-message" role="status">
+        {wishlistMessage}
+      </p>
       <p aria-live="polite" className="form-message" role="status">
         {message}
       </p>

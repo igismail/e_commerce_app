@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { CouponForm } from '@/components/coupon-form';
 import { useCart } from '@/components/providers';
-import { formatMoney } from '@/lib/api';
+import { formatMoney, productImageUrl } from '@/lib/api';
 
 function CartLine({
   item,
@@ -58,7 +58,7 @@ function CartLine({
             height={400}
             referrerPolicy="no-referrer"
             sizes="140px"
-            src={image.url}
+            src={productImageUrl(image.url)}
             unoptimized
             width={400}
           />

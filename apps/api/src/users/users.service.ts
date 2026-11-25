@@ -1,7 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ProductStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma.service';
 import { AuthPrincipal } from '../auth/auth.types';
-import { CreateAddressDto, UpdateAddressDto, UpdateProfileDto } from './users.dto';
+import {
+  CreateAddressDto,
+  UpdateAddressDto,
+  UpdateProfileDto,
+  WishlistQueryDto,
+  WishlistSort,
+} from './users.dto';
 
 @Injectable()
 export class UsersService {
@@ -95,6 +102,136 @@ export class UsersService {
     });
     if (result.count !== 1) {
       throw new NotFoundException('Address not found');
+    }
+  }
+
+  async listWishlist(userId: string, query: WishlistQueryDto) {
+    const wishlist = await this.prisma.wishlist.findUnique({
+      where: { userId },
+    });
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    if (!wishlist) {
+      return {
+        data: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+      };
+    }
+
+    const where = {
+      wishlistId: wishlist.id,
+      variant: {
+        is: {
+          isActive: true,
+          deletedAt: null,
+          product: {
+            is: { status: ProductStatus.ACTIVE, deletedAt: null },
+          },
+        },
+      },
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.wishlistItem.findMany({
+        where,
+        orderBy: { createdAt: query.sort === WishlistSort.OLDEST ? 'asc' : 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          variant: {
+            include: {
+              inventory: true,
+              product: {
+                include: {
+                  category: true,
+                  images: { orderBy: { sortOrder: 'asc' } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.wishlistItem.count({ where }),
+    ]);
+
+    return {
+      data: items.map((item) => ({
+        id: item.id,
+        createdAt: item.createdAt,
+        variantId: item.variant.id,
+        variantName: item.variant.name,
+        sku: item.variant.sku,
+        optionValues: item.variant.optionValues,
+        priceAmount: item.variant.priceAmount,
+        inStock:
+          (item.variant.inventory?.quantity ?? 0) -
+            (item.variant.inventory?.reserved ?? 0) >
+          0,
+        product: {
+          id: item.variant.product.id,
+          name: item.variant.product.name,
+          slug: item.variant.product.slug,
+          brand: item.variant.product.brand,
+          category: item.variant.product.category,
+          images: item.variant.product.images,
+        },
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async addWishlistItem(userId: string, variantId: string) {
+    await this.prisma.$transaction(async (transaction) => {
+      const variant = await transaction.productVariant.findFirst({
+        where: {
+          id: variantId,
+          isActive: true,
+          deletedAt: null,
+          product: {
+            status: ProductStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+        select: { id: true },
+      });
+      if (!variant) {
+        throw new NotFoundException('Product variant not found');
+      }
+
+      const wishlist = await transaction.wishlist.upsert({
+        where: { userId },
+        create: { userId },
+        update: {},
+        select: { id: true },
+      });
+      await transaction.wishlistItem.upsert({
+        where: {
+          wishlistId_variantId: { wishlistId: wishlist.id, variantId },
+        },
+        create: { wishlistId: wishlist.id, variantId },
+        update: {},
+      });
+    });
+    return this.listWishlist(userId, {});
+  }
+
+  async deleteWishlistItem(userId: string, itemId: string) {
+    const wishlist = await this.prisma.wishlist.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!wishlist) {
+      throw new NotFoundException('Wishlist item not found');
+    }
+    const result = await this.prisma.wishlistItem.deleteMany({
+      where: { id: itemId, wishlistId: wishlist.id },
+    });
+    if (result.count !== 1) {
+      throw new NotFoundException('Wishlist item not found');
     }
   }
 }

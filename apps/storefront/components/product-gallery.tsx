@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useState } from 'react';
-import { type ProductImage } from '@/lib/api';
+import { productImageUrl, type ProductImage } from '@/lib/api';
 
 export function ProductGallery({
   images,
@@ -23,7 +23,7 @@ export function ProductGallery({
             height={1200}
             referrerPolicy="no-referrer"
             sizes="(max-width: 650px) 100vw, 55vw"
-            src={activeImage.url}
+            src={productImageUrl(activeImage.url)}
             unoptimized
             width={1000}
           />
@@ -46,7 +46,7 @@ export function ProductGallery({
                 alt=""
                 height={120}
                 referrerPolicy="no-referrer"
-                src={image.url}
+                src={productImageUrl(image.url)}
                 unoptimized
                 width={120}
               />
