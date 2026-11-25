@@ -199,6 +199,6 @@ Paid-order cancellations restore inventory after a full refund, guarded so dupli
 3. Catalog and search (implemented: categories, product detail, variant availability, paginated filters/sorting, and approved reviews)
 4. Cart, coupons, and inventory (implemented: guest/account carts, login merge, quantity checks, coupon quotes, and cart totals)
 5. Flutter customer storefront first (offline-first UI; API integration follows after confirmation)
-6. Checkout, payments, webhooks, orders, and email (implementation and tests in progress)
+6. Checkout, payments, webhooks, orders, and email (implemented; awaiting phase acceptance)
 7. Next.js storefront integration
 8. Admin panel, testing, CI, docs, and production hardening

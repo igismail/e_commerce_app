@@ -311,28 +311,42 @@ describe("OrdersService", () => {
       where: { id: "foreign-order", userId: "user-1" },
       include: expect.any(Object),
     });
+  });
 
-    it("restocks inventory only for eligible paid-order refunds", async () => {
-      const { service, transaction, order } = makeService();
-      transaction.order.findUnique.mockResolvedValue({
-        ...order,
-        inventoryRestockedAt: null,
-        status: OrderStatus.PAID,
-      });
-
-      await service.restockInventoryAfterRefund(transaction as never, order.id);
-
-      expect(transaction.inventory.updateMany).toHaveBeenCalledWith({
-        where: { variantId: "variant-1" },
-        data: {
-          quantity: { increment: 1 },
-          lowStockAlertedAt: null,
-        },
-      });
-      expect(transaction.order.update).toHaveBeenCalledWith({
-        where: { id: order.id },
-        data: { inventoryRestockedAt: expect.any(Date) },
-      });
+  it("restocks inventory only for eligible paid-order refunds", async () => {
+    const { service, transaction, order } = makeService();
+    transaction.order.findUnique.mockResolvedValue({
+      ...order,
+      inventoryRestockedAt: null,
+      status: OrderStatus.PAID,
     });
+
+    await service.restockInventoryAfterRefund(transaction as never, order.id);
+
+    expect(transaction.inventory.updateMany).toHaveBeenCalledWith({
+      where: { variantId: "variant-1" },
+      data: {
+        quantity: { increment: 1 },
+        lowStockAlertedAt: null,
+      },
+    });
+    expect(transaction.order.update).toHaveBeenCalledWith({
+      where: { id: order.id },
+      data: { inventoryRestockedAt: expect.any(Date) },
+    });
+  });
+
+  it("does not restock shipped orders", async () => {
+    const { service, transaction, order } = makeService();
+    transaction.order.findUnique.mockResolvedValue({
+      ...order,
+      inventoryRestockedAt: null,
+      status: OrderStatus.SHIPPED,
+    });
+
+    await service.restockInventoryAfterRefund(transaction as never, order.id);
+
+    expect(transaction.inventory.updateMany).not.toHaveBeenCalled();
+    expect(transaction.order.update).not.toHaveBeenCalled();
   });
 });

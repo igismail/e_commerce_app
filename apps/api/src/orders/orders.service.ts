@@ -574,20 +574,26 @@ export class OrdersService {
     if (
       !order ||
       order.inventoryRestockedAt ||
-      ![OrderStatus.PAID, OrderStatus.PROCESSING].includes(order.status)
+      (order.status !== OrderStatus.PAID &&
+        order.status !== OrderStatus.PROCESSING)
     ) {
       return;
     }
 
     for (const item of order.items) {
       if (item.variantId) {
-        await transaction.inventory.updateMany({
+        const restocked = await transaction.inventory.updateMany({
           where: { variantId: item.variantId },
           data: {
             quantity: { increment: item.quantity },
             lowStockAlertedAt: null,
           },
         });
+        if (restocked.count !== 1) {
+          throw new ConflictException(
+            "Refunded inventory could not be restored",
+          );
+        }
       }
     }
     await transaction.order.update({
