@@ -9,23 +9,23 @@ import {
   Post,
   Query,
   UseGuards,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+} from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiHeader,
   ApiTags,
-} from '@nestjs/swagger';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { AuthPrincipal } from '../auth/auth.types';
-import { RedisService } from '../redis.service';
-import { CheckoutDto, OrderIdParamsDto, OrdersQueryDto } from './checkout.dto';
-import { OrdersService } from './orders.service';
+} from "@nestjs/swagger";
+import { CurrentUser } from "../auth/current-user.decorator";
+import { AuthPrincipal } from "../auth/auth.types";
+import { RedisService } from "../redis.service";
+import { CheckoutDto, OrderIdParamsDto, OrdersQueryDto } from "./checkout.dto";
+import { OrdersService } from "./orders.service";
 
-@ApiTags('checkout', 'orders')
+@ApiTags("checkout", "orders")
 @ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard("jwt"))
 @Controller()
 export class OrdersController {
   constructor(
@@ -33,46 +33,37 @@ export class OrdersController {
     private readonly redis: RedisService,
   ) {}
 
-  @Post('checkout')
+  @Post("checkout")
   @HttpCode(HttpStatus.CREATED)
   @ApiHeader({
-    name: 'Idempotency-Key',
+    name: "Idempotency-Key",
     required: true,
-    description: 'Unique key for this checkout attempt; reuse it only to retry the same request.',
+    description:
+      "Unique key for this checkout attempt; reuse it only to retry the same request.",
   })
   @ApiCreatedResponse({
-    description: 'Order and Stripe PaymentIntent client secret.',
+    description: "Order and Stripe PaymentIntent client secret.",
   })
   async checkout(
     @CurrentUser() user: AuthPrincipal,
-    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers("idempotency-key") idempotencyKey: string | undefined,
     @Body() body: CheckoutDto,
   ) {
-    await this.redis.enforceRateLimit(
-      `checkout:user:${user.id}`,
-      10,
-      15 * 60,
-    );
+    await this.redis.enforceRateLimit(`checkout:user:${user.id}`, 10, 15 * 60);
     return this.orders.createCheckout(user.id, idempotencyKey, body);
   }
 
-  @Get('orders')
-  list(
-    @CurrentUser() user: AuthPrincipal,
-    @Query() query: OrdersQueryDto,
-  ) {
+  @Get("orders")
+  list(@CurrentUser() user: AuthPrincipal, @Query() query: OrdersQueryDto) {
     return this.orders.listOrders(user.id, query);
   }
 
-  @Get('orders/:orderId')
-  get(
-    @CurrentUser() user: AuthPrincipal,
-    @Param() params: OrderIdParamsDto,
-  ) {
+  @Get("orders/:orderId")
+  get(@CurrentUser() user: AuthPrincipal, @Param() params: OrderIdParamsDto) {
     return this.orders.getOrder(user.id, params.orderId);
   }
 
-  @Post('orders/:orderId/cancel')
+  @Post("orders/:orderId/cancel")
   @HttpCode(HttpStatus.OK)
   cancel(
     @CurrentUser() user: AuthPrincipal,

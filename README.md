@@ -22,31 +22,31 @@ Set `SEED_ADMIN_PASSWORD` and `SEED_CUSTOMER_PASSWORD` in `.env` before first st
 
 The API requires `ACCESS_TOKEN_SECRET` to contain at least 32 bytes. When upgrading an existing `.env` from Phase 1, copy the new auth and mail settings from `.env.example` before starting Compose; keep your existing database credentials. Configure `SMTP_USER` and `SMTP_PASSWORD` together when your mail provider requires authentication.
 
-| Variable | Purpose |
-| --- | --- |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL container credentials and database. |
-| `DATABASE_URL` | Prisma connection string; Compose defaults to the `postgres` service. |
-| `REDIS_URL` | Redis connection string; Compose defaults to the `redis` service. |
-| `API_PORT`, `WEB_PORT` | Host ports published for the API and storefront. |
-| `CORS_ORIGIN` | Comma-separated allowed browser origins for credentialed API requests. |
-| `NEXT_PUBLIC_API_URL` | API URL used by storefront browser requests. |
-| `WEB_BASE_URL` | Storefront base URL used to build verification and reset links. |
-| `ACCESS_TOKEN_SECRET` | Private signing key for access tokens; use a unique value of 32+ bytes. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Outgoing mail server settings; defaults target local Mailpit. |
-| `SMTP_FROM` | Sender address displayed on account emails. |
-| `SMTP_USER`, `SMTP_PASSWORD` | Optional SMTP credentials; set both or leave both blank. |
-| `STRIPE_SECRET_KEY` | Stripe secret API key; use a test-mode key for local checkout. |
-| `STRIPE_WEBHOOK_SECRET` | Signing secret from Stripe CLI or the configured webhook endpoint. |
-| `CURRENCY` | Checkout currency; currently only `USD` is supported. |
-| `TAX_RATE_BPS` | Flat tax rate in basis points (10,000 = 100%); defaults to 0. |
-| `SHIPPING_STANDARD_AMOUNT`, `SHIPPING_EXPRESS_AMOUNT` | Shipping fees in USD cents; defaults to 599 and 1299. |
-| `PAYMENT_RESERVATION_MINUTES` | How long checkout reserves stock while payment is pending (1–1440). |
-| `ABANDONED_CART_HOURS` | Cart inactivity period before a reminder job is eligible (1–720). |
-| `LOW_STOCK_THRESHOLD` | Inventory quantity at or below which a low-stock alert is eligible. |
-| `LOW_STOCK_ALERT_EMAIL` | Optional recipient; low-stock alert emails are disabled when empty. |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Credentials for the seeded administrator. |
-| `SEED_CUSTOMER_EMAIL`, `SEED_CUSTOMER_PASSWORD` | Credentials for the seeded customer. |
-| `LOG_LEVEL` | Pino log level, defaulting to `info`. |
+| Variable                                              | Purpose                                                                 |
+| ----------------------------------------------------- | ----------------------------------------------------------------------- |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`   | PostgreSQL container credentials and database.                          |
+| `DATABASE_URL`                                        | Prisma connection string; Compose defaults to the `postgres` service.   |
+| `REDIS_URL`                                           | Redis connection string; Compose defaults to the `redis` service.       |
+| `API_PORT`, `WEB_PORT`                                | Host ports published for the API and storefront.                        |
+| `CORS_ORIGIN`                                         | Comma-separated allowed browser origins for credentialed API requests.  |
+| `NEXT_PUBLIC_API_URL`                                 | API URL used by storefront browser requests.                            |
+| `WEB_BASE_URL`                                        | Storefront base URL used to build verification and reset links.         |
+| `ACCESS_TOKEN_SECRET`                                 | Private signing key for access tokens; use a unique value of 32+ bytes. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`               | Outgoing mail server settings; defaults target local Mailpit.           |
+| `SMTP_FROM`                                           | Sender address displayed on account emails.                             |
+| `SMTP_USER`, `SMTP_PASSWORD`                          | Optional SMTP credentials; set both or leave both blank.                |
+| `STRIPE_SECRET_KEY`                                   | Stripe secret API key; use a test-mode key for local checkout.          |
+| `STRIPE_WEBHOOK_SECRET`                               | Signing secret from Stripe CLI or the configured webhook endpoint.      |
+| `CURRENCY`                                            | Checkout currency; currently only `USD` is supported.                   |
+| `TAX_RATE_BPS`                                        | Flat tax rate in basis points (10,000 = 100%); defaults to 0.           |
+| `SHIPPING_STANDARD_AMOUNT`, `SHIPPING_EXPRESS_AMOUNT` | Shipping fees in USD cents; defaults to 599 and 1299.                   |
+| `PAYMENT_RESERVATION_MINUTES`                         | How long checkout reserves stock while payment is pending (1–1440).     |
+| `ABANDONED_CART_HOURS`                                | Cart inactivity period before a reminder job is eligible (1–720).       |
+| `LOW_STOCK_THRESHOLD`                                 | Inventory quantity at or below which a low-stock alert is eligible.     |
+| `LOW_STOCK_ALERT_EMAIL`                               | Optional recipient; low-stock alert emails are disabled when empty.     |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`             | Credentials for the seeded administrator.                               |
+| `SEED_CUSTOMER_EMAIL`, `SEED_CUSTOMER_PASSWORD`       | Credentials for the seeded customer.                                    |
+| `LOG_LEVEL`                                           | Pino log level, defaulting to `info`.                                   |
 
 For local development without containers, use Node.js 22.12+, PostgreSQL, and Redis:
 
@@ -190,7 +190,7 @@ The response contains the order price snapshot and a Stripe PaymentIntent `clien
 - `POST /api/v1/orders/:orderId/cancel` cancels eligible unpaid orders or requests a refund for paid/processing orders. Shipped and delivered orders cannot be cancelled.
 - BullMQ workers process payment-success notifications, reservation expiry, abandoned-cart reminders, and configured low-stock alerts. Mail delivery uses the SMTP settings above.
 
-Payment creation, cancellation/refunds, webhook processing, stock reservation, and order transitions are implemented in the API. Stripe keys are deliberately optional for startup and required only when calling checkout.
+Paid-order cancellations restore inventory after a full refund, guarded so duplicate refund events cannot restock it twice. Payment creation, cancellation/refunds, webhook processing, stock reservation, and order transitions are implemented in the API. Stripe keys are deliberately optional for startup and required only when calling checkout.
 
 ## Roadmap
 

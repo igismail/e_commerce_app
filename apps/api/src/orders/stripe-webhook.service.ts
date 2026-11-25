@@ -2,15 +2,11 @@ import {
   Inject,
   Injectable,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import {
-  OrderStatus,
-  PaymentStatus,
-  Prisma,
-} from '../generated/prisma/client';
-import { PrismaService } from '../prisma.service';
-import { OrdersService } from './orders.service';
-import { PAYMENT_PROVIDER, PaymentProvider } from './payment-provider';
+} from "@nestjs/common";
+import { OrderStatus, PaymentStatus, Prisma } from "../generated/prisma/client";
+import { PrismaService } from "../prisma.service";
+import { OrdersService } from "./orders.service";
+import { PAYMENT_PROVIDER, PaymentProvider } from "./payment-provider";
 
 @Injectable()
 export class StripeWebhookService {
@@ -34,9 +30,10 @@ export class StripeWebhookService {
         ],
         skipDuplicates: true,
       });
-      const eventRecord = await transaction.paymentWebhookEvent.findUniqueOrThrow({
-        where: { externalEventId: event.id },
-      });
+      const eventRecord =
+        await transaction.paymentWebhookEvent.findUniqueOrThrow({
+          where: { externalEventId: event.id },
+        });
       if (eventRecord.processedAt) {
         return { processed: true } as const;
       }
@@ -45,7 +42,7 @@ export class StripeWebhookService {
         event.paymentId || event.paymentIntentId
           ? await transaction.payment.findFirst({
               where: {
-                provider: 'STRIPE',
+                provider: "STRIPE",
                 OR: [
                   ...(event.paymentId ? [{ id: event.paymentId }] : []),
                   ...(event.paymentIntentId
@@ -57,7 +54,7 @@ export class StripeWebhookService {
             })
           : null;
 
-      if (!payment || (!event.status && event.type !== 'charge.refunded')) {
+      if (!payment || (!event.status && event.type !== "charge.refunded")) {
         await transaction.paymentWebhookEvent.update({
           where: { externalEventId: event.id },
           data: {
@@ -80,21 +77,27 @@ export class StripeWebhookService {
         payment.externalReference &&
         event.paymentIntentId !== payment.externalReference
       ) {
-        throw new Error('Stripe payment reference does not match the stored payment');
+        throw new Error(
+          "Stripe payment reference does not match the stored payment",
+        );
       }
       if (
         event.amount !== undefined &&
-        event.type.startsWith('payment_intent.') &&
+        event.type.startsWith("payment_intent.") &&
         event.amount !== payment.amount
       ) {
-        throw new Error('Stripe payment amount does not match the stored order');
+        throw new Error(
+          "Stripe payment amount does not match the stored order",
+        );
       }
       if (
         event.currency &&
-        event.type.startsWith('payment_intent.') &&
+        event.type.startsWith("payment_intent.") &&
         event.currency.toUpperCase() !== payment.currency
       ) {
-        throw new Error('Stripe payment currency does not match the stored order');
+        throw new Error(
+          "Stripe payment currency does not match the stored order",
+        );
       }
 
       await transaction.paymentWebhookEvent.update({
@@ -112,8 +115,8 @@ export class StripeWebhookService {
         },
       });
       if (
-        event.status === 'succeeded' &&
-        event.type === 'payment_intent.succeeded'
+        event.status === "succeeded" &&
+        event.type === "payment_intent.succeeded"
       ) {
         await transaction.payment.update({
           where: { id: payment.id },
@@ -141,13 +144,10 @@ export class StripeWebhookService {
       }
 
       if (
-        event.status === 'canceled' &&
-        event.type === 'payment_intent.canceled'
+        event.status === "canceled" &&
+        event.type === "payment_intent.canceled"
       ) {
-        await this.orders.cancelPendingOrder(
-          transaction,
-          payment.orderId,
-        );
+        await this.orders.cancelPendingOrder(transaction, payment.orderId);
         await transaction.payment.updateMany({
           where: {
             id: payment.id,
@@ -156,8 +156,8 @@ export class StripeWebhookService {
           data: { status: PaymentStatus.CANCELLED },
         });
       } else if (
-        event.status === 'failed' &&
-        event.type === 'payment_intent.payment_failed'
+        event.status === "failed" &&
+        event.type === "payment_intent.payment_failed"
       ) {
         await transaction.payment.updateMany({
           where: {
@@ -173,8 +173,8 @@ export class StripeWebhookService {
           data: { status: PaymentStatus.FAILED },
         });
       } else if (
-        event.status === 'processing' &&
-        event.type === 'payment_intent.processing'
+        event.status === "processing" &&
+        event.type === "payment_intent.processing"
       ) {
         await transaction.payment.updateMany({
           where: {
@@ -191,10 +191,16 @@ export class StripeWebhookService {
           data: { status: PaymentStatus.PROCESSING },
         });
       } else if (
-        event.type === 'charge.refunded' &&
+        event.type === "charge.refunded" &&
         event.amountRefunded !== undefined
       ) {
         const fullyRefunded = event.amountRefunded >= payment.amount;
+        if (fullyRefunded) {
+          await this.orders.restockInventoryAfterRefund(
+            transaction,
+            payment.orderId,
+          );
+        }
         await transaction.payment.update({
           where: { id: payment.id },
           data: {
@@ -227,17 +233,19 @@ export class StripeWebhookService {
       return { processed: false } as const;
     });
 
-    if ('latePaymentId' in outcome) {
+    if ("latePaymentId" in outcome) {
       if (!outcome.paymentIntentId) {
-        throw new Error('Late Stripe payment is missing its provider reference');
+        throw new Error(
+          "Late Stripe payment is missing its provider reference",
+        );
       }
       const refund = await this.paymentProvider.refundPaymentIntent(
         outcome.paymentIntentId,
         `late-payment-refund:${outcome.latePaymentId}`,
       );
-      if (refund.status !== 'succeeded') {
+      if (refund.status !== "succeeded") {
         throw new ServiceUnavailableException(
-          'Late payment refund is still processing',
+          "Late payment refund is still processing",
         );
       }
       await this.prisma.$transaction(async (transaction) => {
@@ -257,7 +265,10 @@ export class StripeWebhookService {
           data: { processedAt: new Date() },
         });
       });
-    } else if ('confirmationOrderId' in outcome && outcome.confirmationOrderId) {
+    } else if (
+      "confirmationOrderId" in outcome &&
+      outcome.confirmationOrderId
+    ) {
       await this.orders.notifyPaymentSucceeded(outcome.confirmationOrderId);
       await this.prisma.paymentWebhookEvent.update({
         where: { externalEventId: event.id },

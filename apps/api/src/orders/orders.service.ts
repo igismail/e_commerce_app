@@ -1,41 +1,41 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
   Inject,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 import {
   OrderStatus,
   PaymentProvider as PaymentProviderName,
   PaymentStatus,
   Prisma,
   ShippingMethod,
-} from '../generated/prisma/client';
-import { EmailService } from '../auth/email.service';
-import { quoteCoupon } from '../cart/coupon-pricing';
-import { PrismaService } from '../prisma.service';
-import { CheckoutDto, OrdersQueryDto } from './checkout.dto';
+} from "../generated/prisma/client";
+import { EmailService } from "../auth/email.service";
+import { quoteCoupon } from "../cart/coupon-pricing";
+import { PrismaService } from "../prisma.service";
+import { CheckoutDto, OrdersQueryDto } from "./checkout.dto";
 import {
   getCheckoutConfig,
   shippingAmount,
   taxAmount,
-} from './checkout.config';
-import { OrderJobsService } from './order-jobs.service';
-import { PAYMENT_PROVIDER, PaymentProvider } from './payment-provider';
+} from "./checkout.config";
+import { OrderJobsService } from "./order-jobs.service";
+import { PAYMENT_PROVIDER, PaymentProvider } from "./payment-provider";
 
 const orderInclude = {
-  items: { orderBy: { createdAt: 'asc' } },
+  items: { orderBy: { createdAt: "asc" } },
   payments: {
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take: 1,
   },
 } satisfies Prisma.OrderInclude;
 
 const checkoutCartInclude = {
   items: {
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: "asc" },
     include: {
       variant: {
         include: {
@@ -47,7 +47,9 @@ const checkoutCartInclude = {
   },
 } satisfies Prisma.CartInclude;
 
-type OrderWithDetails = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
+type OrderWithDetails = Prisma.OrderGetPayload<{
+  include: typeof orderInclude;
+}>;
 type CheckoutResponse = {
   order: {
     id: string;
@@ -99,7 +101,7 @@ export class OrdersService {
   ): Promise<CheckoutResponse> {
     if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
       throw new BadRequestException(
-        'A valid Idempotency-Key header is required',
+        "A valid Idempotency-Key header is required",
       );
     }
 
@@ -121,13 +123,13 @@ export class OrdersService {
       include: { order: { include: { items: true } } },
     });
     if (!payment) {
-      throw new Error('Checkout idempotency record has no payment');
+      throw new Error("Checkout idempotency record has no payment");
     }
     if (
       !payment.order.reservationExpiresAt &&
       payment.order.status === OrderStatus.PENDING
     ) {
-      throw new ConflictException('This order is no longer awaiting payment');
+      throw new ConflictException("This order is no longer awaiting payment");
     }
 
     const intent = await this.paymentProvider.createPaymentIntent({
@@ -177,7 +179,7 @@ export class OrdersService {
       this.prisma.order.findMany({
         where,
         include: orderInclude,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
       }),
@@ -200,7 +202,7 @@ export class OrdersService {
       include: orderInclude,
     });
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException("Order not found");
     }
     return this.presentOrder(order);
   }
@@ -208,10 +210,13 @@ export class OrdersService {
   async cancelOrder(userId: string, orderId: string) {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId },
-      include: { items: true, payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      include: {
+        items: true,
+        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
     });
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException("Order not found");
     }
     if (
       order.status === OrderStatus.CANCELLED ||
@@ -223,7 +228,7 @@ export class OrdersService {
       order.status === OrderStatus.SHIPPED ||
       order.status === OrderStatus.DELIVERED
     ) {
-      throw new ConflictException('This order can no longer be cancelled');
+      throw new ConflictException("This order can no longer be cancelled");
     }
 
     const payment = order.payments[0];
@@ -231,17 +236,21 @@ export class OrdersService {
       order.status === OrderStatus.PAID ||
       order.status === OrderStatus.PROCESSING
     ) {
-      if (!payment?.externalReference || payment.status !== PaymentStatus.SUCCEEDED) {
+      if (
+        !payment?.externalReference ||
+        payment.status !== PaymentStatus.SUCCEEDED
+      ) {
         throw new ConflictException(
-          'The payment is still processing; try cancelling again shortly',
+          "The payment is still processing; try cancelling again shortly",
         );
       }
       const refund = await this.paymentProvider.refundPaymentIntent(
         payment.externalReference,
         `order-refund:${payment.id}`,
       );
-      if (refund.status === 'succeeded') {
+      if (refund.status === "succeeded") {
         await this.prisma.$transaction(async (transaction) => {
+          await this.restockInventoryAfterRefund(transaction, orderId);
           await transaction.payment.update({
             where: { id: payment.id },
             data: { status: PaymentStatus.REFUNDED },
@@ -265,15 +274,15 @@ export class OrdersService {
       ).status;
     }
 
-    if (providerStatus === 'succeeded') {
+    if (providerStatus === "succeeded") {
       if (!payment?.externalReference) {
-        throw new Error('Succeeded payment is missing its provider reference');
+        throw new Error("Succeeded payment is missing its provider reference");
       }
       const refund = await this.paymentProvider.refundPaymentIntent(
         payment.externalReference,
         `order-refund:${payment.id}`,
       );
-      if (refund.status === 'succeeded') {
+      if (refund.status === "succeeded") {
         await this.prisma.$transaction(async (transaction) => {
           await transaction.payment.update({
             where: { id: payment.id },
@@ -287,9 +296,9 @@ export class OrdersService {
       }
       return this.getOrder(userId, orderId);
     }
-    if (providerStatus === 'processing') {
+    if (providerStatus === "processing") {
       throw new ConflictException(
-        'The payment is still processing; try cancelling again shortly',
+        "The payment is still processing; try cancelling again shortly",
       );
     }
 
@@ -302,10 +311,10 @@ export class OrdersService {
         include: { items: true },
       });
       if (!current) {
-        throw new NotFoundException('Order not found');
+        throw new NotFoundException("Order not found");
       }
       if (current.status !== OrderStatus.PENDING) {
-        throw new ConflictException('This order can no longer be cancelled');
+        throw new ConflictException("This order can no longer be cancelled");
       }
       await this.releaseReservations(transaction, current.items);
       if (current.couponId) {
@@ -342,7 +351,7 @@ export class OrdersService {
         id: true,
         payments: {
           where: { externalReference: { not: null } },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 1,
           select: { id: true, externalReference: true },
         },
@@ -359,10 +368,10 @@ export class OrdersService {
             `payment-expire:${payment.id}`,
           )
         ).status;
-        if (status === 'processing') {
+        if (status === "processing") {
           continue;
         }
-        if (status === 'succeeded') {
+        if (status === "succeeded") {
           const completed = await this.prisma.$transaction((transaction) =>
             this.completePayment(transaction, payment.id),
           );
@@ -377,7 +386,9 @@ export class OrdersService {
     }
 
     await this.prisma.idempotencyKey.deleteMany({
-      where: { expiresAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+      where: {
+        expiresAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      },
     });
   }
 
@@ -510,7 +521,9 @@ export class OrdersService {
 
     for (const item of order.items) {
       if (!item.variantId) {
-        throw new ConflictException('An ordered product is no longer available');
+        throw new ConflictException(
+          "An ordered product is no longer available",
+        );
       }
       const updated = await transaction.$queryRaw<Array<{ id: string }>>`
         UPDATE "Inventory"
@@ -523,7 +536,9 @@ export class OrdersService {
         RETURNING "id"
       `;
       if (updated.length !== 1) {
-        throw new ConflictException('Reserved inventory could not be committed');
+        throw new ConflictException(
+          "Reserved inventory could not be committed",
+        );
       }
     }
     await transaction.payment.update({
@@ -543,6 +558,42 @@ export class OrdersService {
   async notifyPaymentSucceeded(orderId: string) {
     await this.jobs.enqueueOrderConfirmation(orderId);
     await this.enqueueLowStockAlerts(orderId);
+  }
+
+  async restockInventoryAfterRefund(
+    transaction: Prisma.TransactionClient,
+    orderId: string,
+  ) {
+    await transaction.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE
+    `;
+    const order = await transaction.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
+    if (
+      !order ||
+      order.inventoryRestockedAt ||
+      ![OrderStatus.PAID, OrderStatus.PROCESSING].includes(order.status)
+    ) {
+      return;
+    }
+
+    for (const item of order.items) {
+      if (item.variantId) {
+        await transaction.inventory.updateMany({
+          where: { variantId: item.variantId },
+          data: {
+            quantity: { increment: item.quantity },
+            lowStockAlertedAt: null,
+          },
+        });
+      }
+    }
+    await transaction.order.update({
+      where: { id: order.id },
+      data: { inventoryRestockedAt: new Date() },
+    });
   }
 
   async cancelPendingOrder(
@@ -598,26 +649,26 @@ export class OrdersService {
         if (existing) {
           if (existing.expiresAt <= new Date()) {
             throw new ConflictException(
-              'Idempotency key expired; submit a new key',
+              "Idempotency key expired; submit a new key",
             );
           }
           if (existing.requestHash !== requestHash) {
             throw new ConflictException(
-              'Idempotency key was already used for a different checkout',
+              "Idempotency key was already used for a different checkout",
             );
           }
           if (existing.responseBody) {
             return { cachedResponse: existing.responseBody };
           }
           if (!existing.resourceId) {
-            throw new ConflictException('Checkout request is still processing');
+            throw new ConflictException("Checkout request is still processing");
           }
           const payment = await transaction.payment.findFirst({
             where: { orderId: existing.resourceId },
             select: { id: true },
           });
           if (!payment) {
-            throw new Error('Checkout idempotency record has no payment');
+            throw new Error("Checkout idempotency record has no payment");
           }
           return {
             paymentId: payment.id,
@@ -642,7 +693,7 @@ export class OrdersService {
           include: checkoutCartInclude,
         });
         if (!cart || cart.items.length === 0) {
-          throw new BadRequestException('Your cart is empty');
+          throw new BadRequestException("Your cart is empty");
         }
 
         let subtotalAmount = 0;
@@ -651,18 +702,20 @@ export class OrdersService {
           if (
             !variant.isActive ||
             variant.deletedAt ||
-            variant.product.status !== 'ACTIVE' ||
+            variant.product.status !== "ACTIVE" ||
             variant.product.deletedAt ||
             variant.product.category.deletedAt ||
             !variant.inventory
           ) {
             throw new ConflictException(
-              'Your cart contains an item that is no longer available',
+              "Your cart contains an item that is no longer available",
             );
           }
           subtotalAmount += variant.priceAmount * item.quantity;
           if (!Number.isSafeInteger(subtotalAmount)) {
-            throw new BadRequestException('Cart total exceeds the supported range');
+            throw new BadRequestException(
+              "Cart total exceeds the supported range",
+            );
           }
         }
         this.assertDatabaseAmount(subtotalAmount);
@@ -679,7 +732,7 @@ export class OrdersService {
           const quote = quoteCoupon(coupon, subtotalAmount);
           if (!quote?.valid || !coupon) {
             throw new BadRequestException(
-              quote?.reason ?? 'Cart coupon is no longer valid',
+              quote?.reason ?? "Cart coupon is no longer valid",
             );
           }
           couponId = coupon.id;
@@ -692,12 +745,11 @@ export class OrdersService {
           subtotalAmount - discountAmount,
           config.taxRateBasisPoints,
         );
-        const totalAmount =
-          subtotalAmount - discountAmount + shipping + tax;
+        const totalAmount = subtotalAmount - discountAmount + shipping + tax;
         this.assertDatabaseAmount(totalAmount);
         if (totalAmount < 50) {
           throw new BadRequestException(
-            'The payment total must be at least 50 cents',
+            "The payment total must be at least 50 cents",
           );
         }
 
@@ -713,7 +765,7 @@ export class OrdersService {
           `;
           if (reserved.length !== 1) {
             throw new ConflictException(
-              'Requested quantity is no longer available',
+              "Requested quantity is no longer available",
             );
           }
         }
@@ -790,7 +842,7 @@ export class OrdersService {
     } catch (error) {
       if (
         !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-        error.code !== 'P2002'
+        error.code !== "P2002"
       ) {
         throw error;
       }
@@ -802,26 +854,26 @@ export class OrdersService {
       }
       if (existing.requestHash !== requestHash) {
         throw new ConflictException(
-          'Idempotency key was already used for a different checkout',
+          "Idempotency key was already used for a different checkout",
         );
       }
       if (existing.expiresAt <= new Date()) {
         throw new ConflictException(
-          'Idempotency key expired; submit a new key',
+          "Idempotency key expired; submit a new key",
         );
       }
       if (existing.responseBody) {
         return { cachedResponse: existing.responseBody };
       }
       if (!existing.resourceId) {
-        throw new ConflictException('Checkout request is still processing');
+        throw new ConflictException("Checkout request is still processing");
       }
       const payment = await this.prisma.payment.findFirst({
         where: { orderId: existing.resourceId },
         select: { id: true },
       });
       if (!payment) {
-        throw new Error('Checkout idempotency record has no payment');
+        throw new Error("Checkout idempotency record has no payment");
       }
       return { paymentId: payment.id, orderId: existing.resourceId };
     }
@@ -863,7 +915,9 @@ export class OrdersService {
   ) {
     for (const item of items) {
       if (!item.variantId) {
-        throw new ConflictException('An ordered product is no longer available');
+        throw new ConflictException(
+          "An ordered product is no longer available",
+        );
       }
       const released = await transaction.$queryRaw<Array<{ id: string }>>`
         UPDATE "Inventory"
@@ -875,7 +929,7 @@ export class OrdersService {
         RETURNING "id"
       `;
       if (released.length !== 1) {
-        throw new ConflictException('Reserved inventory could not be released');
+        throw new ConflictException("Reserved inventory could not be released");
       }
     }
   }
@@ -910,11 +964,8 @@ export class OrdersService {
     },
     clientSecret: string,
   ): CheckoutResponse {
-    if (
-      !order.reservationExpiresAt &&
-      order.status === OrderStatus.PENDING
-    ) {
-      throw new ConflictException('This order is no longer awaiting payment');
+    if (!order.reservationExpiresAt && order.status === OrderStatus.PENDING) {
+      throw new ConflictException("This order is no longer awaiting payment");
     }
     return {
       order: {
@@ -928,8 +979,7 @@ export class OrdersService {
         taxAmount: order.taxAmount,
         discountAmount: order.discountAmount,
         totalAmount: order.totalAmount,
-        reservationExpiresAt:
-          order.reservationExpiresAt?.toISOString() ?? null,
+        reservationExpiresAt: order.reservationExpiresAt?.toISOString() ?? null,
         items: order.items.map((item) => ({
           sku: item.sku,
           productName: item.productName,
@@ -951,13 +1001,13 @@ export class OrdersService {
 
   private readCheckoutResponse(value: Prisma.JsonValue): CheckoutResponse {
     if (
-      typeof value !== 'object' ||
+      typeof value !== "object" ||
       value === null ||
       Array.isArray(value) ||
-      !('order' in value) ||
-      !('payment' in value)
+      !("order" in value) ||
+      !("payment" in value)
     ) {
-      throw new Error('Stored checkout response is invalid');
+      throw new Error("Stored checkout response is invalid");
     }
     return value as CheckoutResponse;
   }
@@ -998,7 +1048,7 @@ export class OrdersService {
     };
   }
 
-  private addressJson(address: CheckoutDto['shippingAddress']) {
+  private addressJson(address: CheckoutDto["shippingAddress"]) {
     return {
       fullName: address.fullName,
       ...(address.phone ? { phone: address.phone } : {}),
@@ -1012,16 +1062,16 @@ export class OrdersService {
   }
 
   private hashRequest(input: CheckoutDto) {
-    return createHash('sha256')
+    return createHash("sha256")
       .update(JSON.stringify(this.canonicalize(input)))
-      .digest('hex');
+      .digest("hex");
   }
 
   private canonicalize(value: unknown): unknown {
     if (Array.isArray(value)) {
       return value.map((item) => this.canonicalize(item));
     }
-    if (typeof value !== 'object' || value === null) {
+    if (typeof value !== "object" || value === null) {
       return value;
     }
     return Object.fromEntries(
@@ -1033,12 +1083,12 @@ export class OrdersService {
 
   private assertDatabaseAmount(amount: number) {
     if (!Number.isSafeInteger(amount) || amount > MAX_DATABASE_AMOUNT) {
-      throw new BadRequestException('Order total exceeds the supported range');
+      throw new BadRequestException("Order total exceeds the supported range");
     }
   }
 
   private orderNumber() {
-    const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-    return `COM-${date}-${randomBytes(6).toString('hex').toUpperCase()}`;
+    const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+    return `COM-${date}-${randomBytes(6).toString("hex").toUpperCase()}`;
   }
 }
