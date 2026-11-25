@@ -98,6 +98,10 @@ services:
     build:
       context: .
       dockerfile: apps/storefront/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api/v1}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_WEB_URL: ${NEXT_PUBLIC_WEB_URL:-http://localhost:3000}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -105,6 +109,8 @@ services:
       HOSTNAME: 0.0.0.0
       API_INTERNAL_URL: http://api:3001/api/v1
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api/v1}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+      NEXT_PUBLIC_WEB_URL: ${NEXT_PUBLIC_WEB_URL:-http://localhost:3000}
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:

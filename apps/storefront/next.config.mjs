@@ -5,6 +5,7 @@ const appDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  agentRules: false,
   output: 'standalone',
   outputFileTracingRoot: path.join(appDirectory, '../..'),
 };

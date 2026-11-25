@@ -9,6 +9,12 @@ RUN npm ci --include-workspace-root
 FROM node:22-bookworm-slim AS build
 WORKDIR /workspace
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+ARG NEXT_PUBLIC_WEB_URL=http://localhost:3000
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+ENV NEXT_PUBLIC_WEB_URL=${NEXT_PUBLIC_WEB_URL}
 COPY --from=dependencies /workspace/node_modules ./node_modules
 COPY package.json ./
 COPY package-lock.json ./

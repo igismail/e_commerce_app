@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
+import { AppProviders } from '@/components/providers';
+import { SiteHeader } from '@/components/site-header';
 import './globals.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_WEB_URL ?? 'http://localhost:3000',
+  ),
   title: {
     default: 'Commerce — Considered goods for everyday life',
     template: '%s | Commerce',
@@ -16,8 +21,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html data-scroll-behavior="smooth" lang="en">
+      <body>
+        <AppProviders>
+          <SiteHeader />
+          {children}
+        </AppProviders>
+      </body>
     </html>
   );
 }
