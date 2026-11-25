@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'api/api_client.dart';
 
 const ink = Color(0xFF1E3029);
 const muted = Color(0xFF7C817B);
@@ -7,10 +8,12 @@ const line = Color(0xFFE9E7DF);
 const green = Color(0xFF345B47);
 const orange = Color(0xFFC96F48);
 
-void main() => runApp(const CommerceApp());
+void main() => runApp(CommerceApp(apiClient: ApiClient()));
 
 class CommerceApp extends StatefulWidget {
-  const CommerceApp({super.key});
+  const CommerceApp({super.key, this.apiClient});
+
+  final ApiClient? apiClient;
 
   @override
   State<CommerceApp> createState() => _CommerceAppState();
@@ -29,6 +32,19 @@ class _CommerceAppState extends State<CommerceApp> {
   bool inStockOnly = false;
   RangeValues priceRange = const RangeValues(0, 250);
   String? coupon;
+  AuthUser? currentUser;
+  bool authLoading = false;
+  String? authError;
+
+  @override
+  void initState() {
+    super.initState();
+    final apiClient = widget.apiClient;
+    if (apiClient != null) {
+      authLoading = true;
+      _restoreSession(apiClient);
+    }
+  }
 
   int get cartCount => cart.fold(0, (sum, line) => sum + line.quantity);
   int get subtotal =>
@@ -264,9 +280,89 @@ class _CommerceAppState extends State<CommerceApp> {
           onCheckout: _checkout,
         );
       case 4:
-        return AccountPage(onSaved: () => setState(() => tab = 2));
+        return AccountPage(
+          user: currentUser,
+          isLoading: authLoading,
+          authError: authError,
+          onSignIn: _openAuth,
+          onSignOut: _signOut,
+          onRetry: () {
+            final client = widget.apiClient;
+            if (client != null) _restoreSession(client);
+          },
+          onSaved: () => setState(() => tab = 2),
+        );
       default:
         return _shop(showHero: true);
+    }
+  }
+
+  Future<void> _restoreSession(ApiClient client) async {
+    setState(() {
+      authLoading = true;
+      authError = null;
+    });
+    try {
+      final user = await client.restoreSession();
+      if (!mounted) return;
+      setState(() => currentUser = user);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => authError = error.message);
+    } finally {
+      if (mounted) setState(() => authLoading = false);
+    }
+  }
+
+  Future<void> _openAuth() async {
+    final client = widget.apiClient;
+    if (client == null) {
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('The API client is not configured.')),
+      );
+      return;
+    }
+    final result = await showDialog<AuthDialogResult>(
+      context: navigatorKey.currentContext!,
+      builder: (_) => SignInDialog(apiClient: client),
+    );
+    if (!mounted || result == null) return;
+    if (result.user != null) {
+      setState(() {
+        currentUser = result.user;
+        authError = null;
+      });
+    }
+    scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _signOut() async {
+    final client = widget.apiClient;
+    if (client == null) return;
+    try {
+      await client.logout();
+      if (!mounted) return;
+      setState(() {
+        currentUser = null;
+        authError = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        currentUser = null;
+        authError = error.message;
+      });
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text('Signed out on this device. ${error.message}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -2198,7 +2294,23 @@ class CheckoutStep extends StatelessWidget {
 }
 
 class AccountPage extends StatelessWidget {
-  const AccountPage({required this.onSaved, super.key});
+  const AccountPage({
+    required this.user,
+    required this.isLoading,
+    required this.authError,
+    required this.onSignIn,
+    required this.onSignOut,
+    required this.onRetry,
+    required this.onSaved,
+    super.key,
+  });
+
+  final AuthUser? user;
+  final bool isLoading;
+  final String? authError;
+  final VoidCallback onSignIn;
+  final VoidCallback onSignOut;
+  final VoidCallback onRetry;
   final VoidCallback onSaved;
 
   @override
@@ -2236,8 +2348,10 @@ class AccountPage extends StatelessWidget {
                     size: 28,
                   ),
                   const SizedBox(height: 13),
-                  const Text(
-                    'Good to see you.',
+                  Text(
+                    user == null
+                        ? 'Good to see you.'
+                        : 'Welcome, ${user!.firstName}.',
                     style: TextStyle(
                       color: ink,
                       fontSize: 18,
@@ -2245,19 +2359,42 @@ class AccountPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  const Text(
-                    'Sign in or make an account to keep your orders and saved finds close.',
+                  Text(
+                    user == null
+                        ? 'Sign in or make an account to keep your orders and saved finds close.'
+                        : user!.email,
                     style: TextStyle(color: muted, height: 1.5),
                   ),
+                  if (authError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      authError!,
+                      style: const TextStyle(
+                        color: Color(0xFF9A3D2D),
+                        height: 1.4,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: onRetry,
+                      child: const Text('RETRY CONNECTION'),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => const SignInDialog(),
-                      ),
-                      child: const Text('SIGN IN OR JOIN US'),
+                      onPressed: isLoading
+                          ? null
+                          : user == null
+                          ? onSignIn
+                          : onSignOut,
+                      child: isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(user == null ? 'SIGN IN OR JOIN US' : 'SIGN OUT'),
                     ),
                   ),
                 ],
@@ -2302,7 +2439,9 @@ class AccountPage extends StatelessWidget {
   void _comingSoon(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Account services will be connected in the next phase.'),
+        content: Text(
+          'Order history and saved addresses will be available with checkout.',
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -2342,84 +2481,211 @@ class AccountLink extends StatelessWidget {
 }
 
 class SignInDialog extends StatefulWidget {
-  const SignInDialog({super.key});
+  const SignInDialog({required this.apiClient, super.key});
+
+  final ApiClient apiClient;
 
   @override
   State<SignInDialog> createState() => _SignInDialogState();
 }
 
 class _SignInDialogState extends State<SignInDialog> {
+  final formKey = GlobalKey<FormState>();
   final email = TextEditingController();
   final password = TextEditingController();
+  final firstName = TextEditingController();
+  final lastName = TextEditingController();
   bool register = false;
   bool showPassword = false;
+  bool submitting = false;
+  String? errorMessage;
+  String? statusMessage;
 
   @override
   void dispose() {
     email.dispose();
     password.dispose();
+    firstName.dispose();
+    lastName.dispose();
     super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (submitting || !(formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      submitting = true;
+      errorMessage = null;
+      statusMessage = null;
+    });
+    try {
+      if (register) {
+        final message = await widget.apiClient.register(
+          email: email.text,
+          password: password.text,
+          firstName: firstName.text,
+          lastName: lastName.text,
+        );
+        if (!mounted) return;
+        setState(() {
+          register = false;
+          password.clear();
+          statusMessage = message;
+        });
+      } else {
+        final user = await widget.apiClient.login(
+          email: email.text,
+          password: password.text,
+        );
+        if (!mounted) return;
+        Navigator.pop(
+          context,
+          AuthDialogResult(user, 'You’re signed in. Good to have you back.'),
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => errorMessage = error.message);
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(register ? 'Come on in.' : 'Welcome back.'),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'Email address',
-            prefixIcon: Icon(Icons.mail_outline_rounded),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: password,
-          obscureText: !showPassword,
-          decoration: InputDecoration(
-            labelText: 'Password',
-            prefixIcon: const Icon(Icons.lock_outline_rounded),
-            suffixIcon: IconButton(
-              onPressed: () => setState(() => showPassword = !showPassword),
-              icon: Icon(
-                showPassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
+    content: SizedBox(
+      width: 420,
+      child: Form(
+        key: formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (register) ...[
+                TextFormField(
+                  controller: firstName,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'First name'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter your first name'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: lastName,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'Last name'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter your last name'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextFormField(
+                controller: email,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Email address',
+                  prefixIcon: Icon(Icons.mail_outline_rounded),
+                ),
+                validator: (value) {
+                  final address = value?.trim() ?? '';
+                  return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(address)
+                      ? null
+                      : 'Enter a valid email address';
+                },
               ),
-            ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: password,
+                obscureText: !showPassword,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  helperText: register
+                      ? '12+ characters with uppercase, lowercase, number and symbol.'
+                      : null,
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => showPassword = !showPassword),
+                    icon: Icon(
+                      showPassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
+                ),
+                validator: (value) {
+                  final secret = value ?? '';
+                  if (secret.isEmpty) return 'Enter your password';
+                  if (!register) return null;
+                  if (secret.length < 12 ||
+                      !RegExp(r'[a-z]').hasMatch(secret) ||
+                      !RegExp(r'[A-Z]').hasMatch(secret) ||
+                      !RegExp(r'\d').hasMatch(secret) ||
+                      !RegExp(r'[^A-Za-z0-9]').hasMatch(secret)) {
+                    return 'Use the password requirements shown above';
+                  }
+                  return null;
+                },
+              ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    errorMessage!,
+                    style: const TextStyle(color: Color(0xFF9A3D2D)),
+                  ),
+                ),
+              ],
+              if (statusMessage != null) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    statusMessage!,
+                    style: const TextStyle(color: green, height: 1.4),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          'This preview is offline. Account access will be connected to the secure store API.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
+      ),
     ),
     actions: [
       TextButton(
-        onPressed: () => setState(() => register = !register),
+        onPressed: submitting
+            ? null
+            : () => setState(() {
+                register = !register;
+                errorMessage = null;
+                statusMessage = null;
+              }),
         child: Text(register ? 'I HAVE AN ACCOUNT' : 'CREATE ACCOUNT'),
       ),
       FilledButton(
-        onPressed: () {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Account sign-in will be enabled after API integration.',
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        },
-        child: Text(register ? 'JOIN US' : 'SIGN IN'),
+        onPressed: submitting ? null : _submit,
+        child: submitting
+            ? const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(register ? 'JOIN US' : 'SIGN IN'),
       ),
     ],
   );
+}
+
+class AuthDialogResult {
+  const AuthDialogResult(this.user, this.message);
+
+  final AuthUser? user;
+  final String message;
 }
 
 class EmptyState extends StatelessWidget {

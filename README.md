@@ -1,6 +1,6 @@
 # Commerce
 
-A multi-client ecommerce monorepo. The Flutter customer app at the repository root is an offline-first storefront preview. The API-backed Next.js storefront and NestJS API live in `apps/storefront` and `apps/api`.
+A multi-client ecommerce monorepo. The Flutter customer app at the repository root includes API-backed account sign-in and registration alongside its local storefront preview. The API-backed Next.js storefront and NestJS API live in `apps/storefront` and `apps/api`.
 
 ## Run locally
 
@@ -64,17 +64,19 @@ npm run dev:web
 
 Configure `DATABASE_URL`, `REDIS_URL`, `ACCESS_TOKEN_SECRET`, `WEB_BASE_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_EMAIL`, and `SEED_CUSTOMER_PASSWORD` in the environment first.
 
-## Flutter storefront preview
+## Flutter storefront
 
 From the repository root, install Flutter 3.41+ and run:
 
 ```sh
 flutter pub get
-flutter run
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3001/api/v1
 flutter test
 ```
 
-This independent app uses an in-memory sample catalog and cart. It includes a responsive home/discovery catalog, category/search/filter/sort interactions, product details with options, saved items, cart quantities and the `WELCOME10` demo coupon, account entry, and a validated demo shipping flow. Sign-in, orders, and payment are not sent to the API.
+The default API URL targets the Android emulator. For an iOS simulator use `http://localhost:3001/api/v1`; for a physical device, use the development machine's LAN address. Any target can override it with `--dart-define=API_BASE_URL=https://your-api.example/api/v1`.
+
+The account screen connects to the API's registration, login, current-user, refresh, and logout endpoints. Access and refresh session values are kept in platform secure storage on native targets; browser builds use credentialed cookies. New accounts must verify their email before signing in; with Compose, retrieve the verification link from Mailpit at <http://localhost:8025>. Flutter's sample catalog, cart, saved items, coupon and shipping confirmation remain local preview data; checkout/payment, order history, and saved addresses are not submitted by this app yet. For Flutter web, run with `flutter run -d chrome --web-port=8080`; add the served origin to `CORS_ORIGIN` if you change the port or host.
 
 ## Next.js storefront
 
@@ -212,6 +214,6 @@ Paid-order cancellations restore inventory after a full refund, guarded so dupli
 3. Catalog and search (implemented: categories, product detail, variant availability, paginated filters/sorting, and approved reviews)
 4. Cart, coupons, and inventory (implemented: guest/account carts, login merge, quantity checks, coupon quotes, and cart totals)
 5. Checkout, payments, webhooks, orders, and email (implemented and approved)
-6. Flutter storefront preview (implemented and approved; remains offline-first)
+6. Flutter storefront and API account integration (in progress)
 7. API-backed Next.js storefront, wishlist, demo imagery, and generated API client (implemented; awaiting acceptance)
 8. Admin panel, testing, CI, docs, and production hardening

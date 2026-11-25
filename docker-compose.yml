@@ -48,7 +48,7 @@ services:
       PORT: 3001
       DATABASE_URL: ${DATABASE_URL:-postgresql://commerce:local-postgres-password@postgres:5432/commerce?schema=public}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:8080,http://127.0.0.1:8080}
       ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:?Set ACCESS_TOKEN_SECRET in .env}
       WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
