@@ -54,4 +54,58 @@ export class EmailService {
       text: `Hi ${firstName},\n\nReset your password by opening this link:\n${url.toString()}\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.`,
     });
   }
+
+  async sendOrderConfirmationEmail(input: {
+    to: string;
+    firstName: string;
+    orderNumber: string;
+    currency: string;
+    totalAmount: number;
+    items: Array<{ productName: string; variantName: string; quantity: number }>;
+  }) {
+    const itemLines = input.items
+      .map(
+        (item) =>
+          `- ${item.productName} (${item.variantName}) × ${item.quantity}`,
+      )
+      .join('\n');
+    const total = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: input.currency,
+    }).format(input.totalAmount / 100);
+    await this.transporter.sendMail({
+      from: this.from,
+      to: input.to,
+      subject: `Order ${input.orderNumber} confirmed`,
+      text: `Hi ${input.firstName},\n\nThank you for your order ${input.orderNumber}.\n\n${itemLines}\n\nTotal: ${total}\n\nWe will send another update when your order ships.`,
+    });
+  }
+
+  async sendAbandonedCartReminder(
+    to: string,
+    firstName: string,
+    productNames: string[],
+  ) {
+    const items = [...new Set(productNames)].slice(0, 10).join(', ');
+    await this.transporter.sendMail({
+      from: this.from,
+      to,
+      subject: 'A few good things are still in your bag',
+      text: `Hi ${firstName},\n\nYou left some items in your bag${items ? `: ${items}` : ''}.\n\nYour bag is waiting whenever you are ready to take another look.`,
+    });
+  }
+
+  async sendLowStockAlert(input: {
+    to: string;
+    productName: string;
+    sku: string;
+    available: number;
+  }) {
+    await this.transporter.sendMail({
+      from: this.from,
+      to: input.to,
+      subject: `Low stock: ${input.sku}`,
+      text: `${input.productName} (${input.sku}) has ${input.available} units available.`,
+    });
+  }
 }

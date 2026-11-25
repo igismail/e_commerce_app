@@ -226,10 +226,16 @@ describe('CartService', () => {
       code: 'SAVE25',
     });
 
-    expect(transaction.cart.update).toHaveBeenCalledWith({
-      where: { id: 'cart-1' },
-      data: { couponCode: 'SAVE25' },
-    });
+    expect(transaction.cart.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cart-1' },
+        data: expect.objectContaining({
+          couponCode: 'SAVE25',
+          abandonedReminderSentAt: null,
+          lastActivityAt: expect.any(Date),
+        }),
+      }),
+    );
     expect(result.data).toMatchObject({
       subtotalAmount: 2500,
       discountAmount: 300,
@@ -265,10 +271,16 @@ describe('CartService', () => {
       },
       update: { quantity: 5 },
     });
-    expect(transaction.cart.update).toHaveBeenCalledWith({
-      where: { id: 'user-cart' },
-      data: { couponCode: 'SAVE10' },
-    });
+    expect(transaction.cart.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'user-cart' },
+        data: expect.objectContaining({
+          couponCode: 'SAVE10',
+          abandonedReminderSentAt: null,
+          lastActivityAt: expect.any(Date),
+        }),
+      }),
+    );
     expect(transaction.cart.delete).toHaveBeenCalledWith({
       where: { id: 'guest-cart' },
     });

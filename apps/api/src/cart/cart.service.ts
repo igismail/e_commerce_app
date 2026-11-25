@@ -6,11 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  DiscountType,
   Prisma,
   ProductStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma.service';
+import { quoteCoupon } from './coupon-pricing';
 import { AddCartItemDto, ApplyCouponDto, UpdateCartItemDto } from './cart.dto';
 
 const GUEST_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -94,6 +94,7 @@ export class CartService {
       if (item.quantity > available) {
         throw new ConflictException('Requested quantity is not available');
       }
+      await this.touchCart(transaction, identity.cartId);
     });
     return this.result(identity);
   }
@@ -119,6 +120,7 @@ export class CartService {
         where: { id: item.id },
         data: { quantity: input.quantity },
       });
+      await this.touchCart(transaction, identity.cartId);
     });
     return this.result(identity);
   }
@@ -131,9 +133,13 @@ export class CartService {
     const identity = await this.ensureCart(userId, guestToken);
     const removed = await this.prisma.$transaction(async (transaction) => {
       await this.lockCart(transaction, identity.cartId);
-      return transaction.cartItem.deleteMany({
+      const result = await transaction.cartItem.deleteMany({
         where: { id: itemId, cartId: identity.cartId },
       });
+      if (result.count === 1) {
+        await this.touchCart(transaction, identity.cartId);
+      }
+      return result;
     });
     if (removed.count !== 1) {
       throw new NotFoundException('Cart item not found');
@@ -161,7 +167,7 @@ export class CartService {
       const coupon = await transaction.coupon.findUnique({
         where: { code: input.code },
       });
-      const quote = this.quoteCoupon(coupon, subtotalAmount);
+      const quote = quoteCoupon(coupon, subtotalAmount);
       if (!quote?.valid) {
         throw new BadRequestException(
           quote?.reason ?? 'Coupon is invalid or unavailable',
@@ -169,7 +175,11 @@ export class CartService {
       }
       await transaction.cart.update({
         where: { id: identity.cartId },
-        data: { couponCode: quote.code },
+        data: {
+          couponCode: quote.code,
+          lastActivityAt: new Date(),
+          abandonedReminderSentAt: null,
+        },
       });
     });
     return this.result(identity);
@@ -184,7 +194,11 @@ export class CartService {
       await this.lockCart(transaction, identity.cartId);
       await transaction.cart.update({
         where: { id: identity.cartId },
-        data: { couponCode: null },
+        data: {
+          couponCode: null,
+          lastActivityAt: new Date(),
+          abandonedReminderSentAt: null,
+        },
       });
     });
     return this.result(identity);
@@ -247,8 +261,14 @@ export class CartService {
       if (!userCart.couponCode && guestCart.couponCode) {
         await transaction.cart.update({
           where: { id: userCart.id },
-          data: { couponCode: guestCart.couponCode },
+          data: {
+            couponCode: guestCart.couponCode,
+            lastActivityAt: new Date(),
+            abandonedReminderSentAt: null,
+          },
         });
+      } else if (guestCart.items.length > 0) {
+        await this.touchCart(transaction, userCart.id);
       }
       await transaction.cart.delete({ where: { id: guestCart.id } });
     });
@@ -358,12 +378,12 @@ export class CartService {
       };
     });
     const subtotalAmount = this.subtotal(cart);
-    let coupon: ReturnType<CartService['quoteCoupon']> = null;
+    let coupon: ReturnType<typeof quoteCoupon> = null;
     if (cart.couponCode) {
       const record = await this.prisma.coupon.findUnique({
         where: { code: cart.couponCode },
       });
-      coupon = this.quoteCoupon(record, subtotalAmount) ?? {
+      coupon = quoteCoupon(record, subtotalAmount) ?? {
         code: cart.couponCode,
         valid: false,
         discountAmount: 0,
@@ -391,48 +411,6 @@ export class CartService {
       throw new BadRequestException('Cart total exceeds the supported range');
     }
     return subtotal;
-  }
-
-  private quoteCoupon(
-    coupon: Prisma.CouponGetPayload<Record<string, never>> | null,
-    subtotalAmount: number,
-  ) {
-    if (
-      !coupon ||
-      !coupon.isActive ||
-      coupon.deletedAt ||
-      (coupon.startsAt && coupon.startsAt > new Date()) ||
-      (coupon.expiresAt && coupon.expiresAt <= new Date()) ||
-      (coupon.maxUses !== null && coupon.usesCount >= coupon.maxUses)
-    ) {
-      return null;
-    }
-    if (subtotalAmount < coupon.minimumOrderAmount) {
-      return {
-        code: coupon.code,
-        valid: false,
-        discountAmount: 0,
-        reason: 'Cart does not meet the coupon minimum',
-      };
-    }
-
-    const amount =
-      coupon.discountType === DiscountType.PERCENTAGE
-        ? Number(
-            (BigInt(subtotalAmount) * BigInt(coupon.valueAmount)) / 10_000n,
-          )
-        : Math.min(subtotalAmount, coupon.valueAmount);
-    const discountAmount = Math.min(
-      amount,
-      coupon.maxDiscountAmount ?? Number.MAX_SAFE_INTEGER,
-      subtotalAmount,
-    );
-    return {
-      code: coupon.code,
-      description: coupon.description,
-      valid: true,
-      discountAmount,
-    };
   }
 
   private async assertAvailable(
@@ -481,6 +459,16 @@ export class CartService {
     await transaction.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "Cart" WHERE "id" = ${cartId} FOR UPDATE
     `;
+  }
+
+  private touchCart(transaction: Prisma.TransactionClient, cartId: string) {
+    return transaction.cart.update({
+      where: { id: cartId },
+      data: {
+        lastActivityAt: new Date(),
+        abandonedReminderSentAt: null,
+      },
+    });
   }
 
   private hashGuestToken(rawGuestToken: string) {

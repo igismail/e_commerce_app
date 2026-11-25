@@ -35,6 +35,15 @@ The API requires `ACCESS_TOKEN_SECRET` to contain at least 32 bytes. When upgrad
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Outgoing mail server settings; defaults target local Mailpit. |
 | `SMTP_FROM` | Sender address displayed on account emails. |
 | `SMTP_USER`, `SMTP_PASSWORD` | Optional SMTP credentials; set both or leave both blank. |
+| `STRIPE_SECRET_KEY` | Stripe secret API key; use a test-mode key for local checkout. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret from Stripe CLI or the configured webhook endpoint. |
+| `CURRENCY` | Checkout currency; currently only `USD` is supported. |
+| `TAX_RATE_BPS` | Flat tax rate in basis points (10,000 = 100%); defaults to 0. |
+| `SHIPPING_STANDARD_AMOUNT`, `SHIPPING_EXPRESS_AMOUNT` | Shipping fees in USD cents; defaults to 599 and 1299. |
+| `PAYMENT_RESERVATION_MINUTES` | How long checkout reserves stock while payment is pending (1–1440). |
+| `ABANDONED_CART_HOURS` | Cart inactivity period before a reminder job is eligible (1–720). |
+| `LOW_STOCK_THRESHOLD` | Inventory quantity at or below which a low-stock alert is eligible. |
+| `LOW_STOCK_ALERT_EMAIL` | Optional recipient; low-stock alert emails are disabled when empty. |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Credentials for the seeded administrator. |
 | `SEED_CUSTOMER_EMAIL`, `SEED_CUSTOMER_PASSWORD` | Credentials for the seeded customer. |
 | `LOG_LEVEL` | Pino log level, defaulting to `info`. |
@@ -141,7 +150,47 @@ Run API unit and HTTP tests with `npm test --workspace @commerce/api`; build bot
 - `POST /api/v1/cart/coupon` accepts `{"code":"SAVE10"}` and `DELETE /api/v1/cart/coupon` removes it. Cart responses include integer `subtotalAmount`, `discountAmount`, and `totalAmount`; percentage coupons use the schema’s basis-point value and optional maximum discount.
 - After successful login, guest lines merge into the account cart (matching variants are combined up to 99) and the guest cookie is cleared. The user cart’s coupon takes precedence if both carts have one.
 
-Cart availability checks account for `quantity - reserved`; carts do not hold stock. Inventory is reserved during checkout in Phase 5, where availability will be rechecked transactionally before creating an order.
+Cart availability checks account for `quantity - reserved`; carts do not hold stock. Inventory is reserved during checkout in a database transaction.
+
+### Checkout, payments, and orders
+
+Checkout and payment creation require an authenticated account and a configured Stripe secret key. Copy Stripe test keys into `.env`; checkout remains unavailable until `STRIPE_SECRET_KEY` is set. Start the API and forward Stripe test webhooks to it:
+
+```sh
+stripe listen --forward-to localhost:3001/api/v1/webhooks/stripe
+```
+
+Set the printed `whsec_...` value as `STRIPE_WEBHOOK_SECRET`, then restart the API. The webhook endpoint verifies Stripe signatures against the raw request body and deduplicates event IDs. Do not mark an order paid based on a client redirect or client-side payment result; the verified webhook is authoritative.
+
+`POST /api/v1/checkout` requires a bearer token and an `Idempotency-Key` header (8–128 letters, digits, `.`, `_`, `:`, or `-`). Reuse the same key only when retrying the exact same request. The JSON body requires a `shippingAddress` with `fullName`, `line1`, `city`, `region`, `postalCode`, and two-letter `countryCode`; optional fields are `phone`, `line2`, `billingAddress`, `customerNote`, and `shippingMethod` (`STANDARD` or `EXPRESS`). For example:
+
+```http
+POST /api/v1/checkout
+Authorization: Bearer <accessToken>
+Idempotency-Key: checkout-attempt-2026-001
+Content-Type: application/json
+
+{
+  "shippingAddress": {
+    "fullName": "Alex Morgan",
+    "line1": "123 Market Street",
+    "city": "San Francisco",
+    "region": "CA",
+    "postalCode": "94105",
+    "countryCode": "US"
+  },
+  "shippingMethod": "STANDARD"
+}
+```
+
+The response contains the order price snapshot and a Stripe PaymentIntent `clientSecret` for confirmation in the client’s Stripe SDK. All prices are USD cents. Tax is a configured flat basis-point rate on discounted merchandise (shipping is excluded); `TAX_RATE_BPS=0` is the default, not a jurisdiction-specific tax calculation. Stock is reserved for the configured payment window and released on expiration or cancellation. A late successful payment is automatically refunded.
+
+- `GET /api/v1/orders?page=1&limit=20&status=PAID` lists only the authenticated user’s orders.
+- `GET /api/v1/orders/:orderId` returns that user’s order details.
+- `POST /api/v1/orders/:orderId/cancel` cancels eligible unpaid orders or requests a refund for paid/processing orders. Shipped and delivered orders cannot be cancelled.
+- BullMQ workers process payment-success notifications, reservation expiry, abandoned-cart reminders, and configured low-stock alerts. Mail delivery uses the SMTP settings above.
+
+Payment creation, cancellation/refunds, webhook processing, stock reservation, and order transitions are implemented in the API. Stripe keys are deliberately optional for startup and required only when calling checkout.
 
 ## Roadmap
 
@@ -150,6 +199,6 @@ Cart availability checks account for `quantity - reserved`; carts do not hold st
 3. Catalog and search (implemented: categories, product detail, variant availability, paginated filters/sorting, and approved reviews)
 4. Cart, coupons, and inventory (implemented: guest/account carts, login merge, quantity checks, coupon quotes, and cart totals)
 5. Flutter customer storefront first (offline-first UI; API integration follows after confirmation)
-6. Checkout, payments, webhooks, orders, and email
+6. Checkout, payments, webhooks, orders, and email (implementation and tests in progress)
 7. Next.js storefront integration
 8. Admin panel, testing, CI, docs, and production hardening
